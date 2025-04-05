@@ -1,19 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Change Detection App</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
+        h1 { text-align: center; }
+        .section { margin-bottom: 30px; text-align: center; }
+        .images { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        img { max-height: 200px; border: 2px solid #444; border-radius: 8px; }
+        button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+        form { display: inline-block; }
+    </style>
+</head>
 <body>
-    <h1>Change Detection</h1>
-    <p>Step 1: Click below to capture the baseline image.</p>
-    <form action="/capture_baseline" method="post">
-        <button type="submit">Capture Baseline</button>
-    </form>
+    <h1>Change Detection System</h1>
 
-    <p>Step 2: After capturing baseline, click below to capture the changed image.</p>
-    <form action="/capture_changed" method="post">
-        <button type="submit">Capture Changed Image</button>
-    </form>
+    <div class="section">
+        <form action="/start_camera" method="post"><button type="submit">Start Baseline Capture</button></form>
+        <form action="/stop_camera" method="post"><button type="submit">Stop Baseline</button></form>
+        <form action="/capture_changed" method="post"><button type="submit">Capture Changed Image</button></form>
+        <form action="/train" method="post"><button type="submit">Train Model</button></form>
+        <form action="/predict" method="post"><button type="submit">Predict</button></form>
+        <form action="/compare" method="post"><button type="submit">Compare</button></form>
+    </div>
 
-    <p>Live Feed (shows changes after both images are captured):</p>
-    <img src="{{ url_for('video_feed') }}" alt="Live Feed" style="max-width: 100%;">
-    <p>First image is the baseline. After capturing the changed image, changes will be highlighted.</p>
+    <div class="section">
+        <h2>Live Feed</h2>
+        <img src="/video_feed">
+    </div>
+
+    <div class="section">
+        <h2>Baseline Images</h2>
+        <div class="images">
+            {% for file in baseline_files %}
+                <img src="{{ url_for('static', filename=file) }}">
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if changed_exists %}
+    <div class="section">
+        <h2>Changed Image</h2>
+        <img src="{{ url_for('static', filename='changed.jpg') }}">
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>Match Visualization</h2>
+        <img src="/match_visual">
+    </div>
 </body>
 </html>
