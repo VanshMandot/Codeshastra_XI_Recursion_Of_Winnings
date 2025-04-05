@@ -1,55 +1,52 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Change Detection App</title>
+    <title>Environment Change Detector</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
-        h1 { text-align: center; }
-        .section { margin-bottom: 30px; text-align: center; }
-        .images { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-        img { max-height: 200px; border: 2px solid #444; border-radius: 8px; }
-        button { margin: 10px; padding: 10px 20px; font-size: 16px; }
-        form { display: inline-block; }
+        img { max-width: 100%; height: auto; margin: 10px; }
+        .btn-group { margin: 10px 0; }
+        button { margin: 5px; padding: 10px; }
     </style>
 </head>
 <body>
-    <h1>Change Detection System</h1>
+    <h1>Environment Change Detection</h1>
 
-    <div class="section">
+    <div class="btn-group">
         <form action="/start_camera" method="post"><button type="submit">Start Baseline Capture</button></form>
-        <form action="/stop_camera" method="post"><button type="submit">Stop Baseline</button></form>
+        <form action="/stop_camera" method="post"><button type="submit">Stop Camera</button></form>
         <form action="/capture_changed" method="post"><button type="submit">Capture Changed Image</button></form>
         <form action="/train" method="post"><button type="submit">Train Model</button></form>
         <form action="/predict" method="post"><button type="submit">Predict</button></form>
         <form action="/compare" method="post"><button type="submit">Compare</button></form>
     </div>
 
-    <div class="section">
-        <h2>Live Feed</h2>
-        <img src="/video_feed">
-    </div>
-
-    <div class="section">
+    <div>
         <h2>Baseline Images</h2>
-        <div class="images">
-            {% for file in baseline_files %}
-                <img src="{{ url_for('static', filename=file) }}">
-            {% endfor %}
-        </div>
+        {% for file in baseline_files %}
+            <img src="/{{ file }}" alt="Baseline Image">
+        {% endfor %}
     </div>
 
-    {% if changed_exists %}
-    <div class="section">
+    <div>
         <h2>Changed Image</h2>
-        <img src="{{ url_for('static', filename='changed.jpg') }}">
+        {% if changed_exists %}
+            <img src="/static/changed.jpg" alt="Changed Image">
+        {% endif %}
     </div>
-    {% endif %}
 
-    <div class="section">
+    <div>
         <h2>Match Visualization</h2>
-        <img src="/match_visual">
+        <img src="/match_visual" alt="Match Visualization">
+    </div>
+
+    <div>
+        <h2>Upload Video for Detection</h2>
+        <form action="/upload_video" method="post" enctype="multipart/form-data">
+            <input type="file" name="video">
+            <button type="submit">Upload</button>
+        </form>
     </div>
 </body>
 </html>

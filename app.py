@@ -5,11 +5,15 @@ import threading
 import time
 import os
 import joblib
+import uuid
 from flask import Flask, render_template, Response, request, redirect, url_for, send_file
 from sklearn.neighbors import KNeighborsClassifier
 from ultralytics import YOLO
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Global Variables
 camera = None
@@ -26,6 +30,7 @@ stop_baseline_capture = False
 MODEL_PATH = "static/knn_model.pkl"
 YOLO_MODEL = YOLO("yolov8n.pt")
 
+# Camera handling
 
 def find_working_camera():
     for i in range(5):
@@ -34,19 +39,16 @@ def find_working_camera():
             return temp_cam
     return None
 
-
 def start_camera():
     global camera
     if camera is None:
         camera = find_working_camera()
-
 
 def stop_camera():
     global camera
     if camera is not None:
         camera.release()
         camera = None
-
 
 def get_frame():
     global camera
@@ -55,51 +57,36 @@ def get_frame():
     ret, frame = camera.read()
     return frame if ret else None
 
-
 def preprocess_image(image):
     resized = cv2.resize(image, (640, 480))
     gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
     return resized, gray
 
+@app.route('/')
+def index():
+    baseline_files = [f"static/{img}" for img in os.listdir('static') if img.startswith('baseline_')]
+    changed_exists = os.path.exists("static/changed.jpg")
+    return render_template('index.html', baseline_files=baseline_files, changed_exists=changed_exists)
 
-def detect_objects(frame):
-    results = YOLO_MODEL(frame)[0]
-    for box in results.boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        label = results.names[int(box.cls[0])]
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    return frame
+@app.route('/start_camera', methods=['POST'])
+def start_cam():
+    global stage, capture_thread, stop_baseline_capture, baseline_images
+    start_camera()
+    baseline_images = []
+    stop_baseline_capture = False
+    stage = "baseline"
+    capture_thread = threading.Thread(target=capture_baseline_loop)
+    capture_thread.start()
+    return redirect(url_for('index'))
 
-
-def generate_frames():
-    global camera, baseline, changed, stage
-    while True:
-        if camera is None:
-            break
-        frame = get_frame()
-        if frame is None:
-            continue
-
-        frame = detect_objects(frame)
-        resized, gray = preprocess_image(frame)
-
-        if stage == "free" and baseline is not None and changed is not None:
-            diff = cv2.absdiff(baseline, changed)
-            _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for contour in contours:
-                if cv2.contourArea(contour) > 500:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    cv2.rectangle(resized, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                    cv2.putText(resized, "Change", (x, y - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-
-        ret, buffer = cv2.imencode('.jpg', resized)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
+@app.route('/stop_camera', methods=['POST'])
+def stop_cam():
+    global stop_baseline_capture, capture_thread
+    stop_baseline_capture = True
+    if capture_thread is not None:
+        capture_thread.join()
+    stop_camera()
+    return redirect(url_for('index'))
 
 def capture_baseline_loop():
     global baseline_images, stop_baseline_capture
@@ -114,48 +101,6 @@ def capture_baseline_loop():
             count += 1
         time.sleep(3)
 
-
-@app.route('/')
-def index():
-    files = []
-    if os.path.exists("static"):
-        files = sorted([f for f in os.listdir("static") if f.startswith("baseline_")],
-                       key=lambda x: int(x.split('_')[1].split('.')[0]))
-    return render_template("index.html", stage=stage, baseline_files=files,
-                           changed_exists=os.path.exists("static/changed.jpg"))
-
-
-@app.route('/start_camera', methods=['POST'])
-def start_cam():
-    global stage, capture_thread, stop_baseline_capture, baseline_images
-
-    start_camera()
-    baseline_images = []
-    stop_baseline_capture = False
-    stage = "baseline"
-
-    capture_thread = threading.Thread(target=capture_baseline_loop)
-    capture_thread.start()
-
-    return redirect(url_for('index'))
-
-
-@app.route('/stop_camera', methods=['POST'])
-def stop_cam():
-    global stop_baseline_capture, capture_thread
-
-    stop_baseline_capture = True
-    if capture_thread is not None:
-        capture_thread.join()
-    stop_camera()
-    return redirect(url_for('index'))
-
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-
 @app.route('/capture_changed', methods=['POST'])
 def capture_changed():
     global changed, stage
@@ -168,7 +113,6 @@ def capture_changed():
         stage = "free"
     stop_camera()
     return redirect(url_for('index'))
-
 
 @app.route('/train', methods=['POST'])
 def train_model():
@@ -192,7 +136,6 @@ def train_model():
 
     return redirect(url_for('index'))
 
-
 @app.route('/predict', methods=['POST'])
 def predict():
     global changed
@@ -213,11 +156,9 @@ def predict():
 
     return redirect(url_for('index'))
 
-
 @app.route('/compare', methods=['POST'])
 def compare():
     global stage, baseline_images, changed
-
     if changed is None or not baseline_images:
         print("[ERROR] No data to compare.")
         return redirect(url_for('index'))
@@ -233,14 +174,11 @@ def compare():
         base = cv2.imread(path)
         resized, gray = preprocess_image(base)
         kp1, des1 = orb.detectAndCompute(gray, None)
-
         if des1 is None or des2 is None:
             continue
-
         matches = bf.match(des1, des2)
         matches = sorted(matches, key=lambda x: x.distance)
         score = len(matches)
-
         if score > best_score:
             best_score = score
             best_match_image = path
@@ -251,11 +189,62 @@ def compare():
     stage = "free"
     return redirect(url_for('index'))
 
-
 @app.route('/match_visual')
 def match_visual():
     return send_file("static/match_visual.jpg", mimetype='image/jpeg')
 
+@app.route('/upload_video', methods=['POST'])
+def upload_video():
+    if 'video' not in request.files:
+        return "No video file uploaded", 400
+    file = request.files['video']
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    return redirect(url_for('process_video', filename=filename))
+
+@app.route('/process_video/<filename>')
+def process_video(filename):
+    video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    cap = cv2.VideoCapture(video_path)
+
+    results = []
+    total_objects = 0
+
+    frame_id = 0
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        detections = YOLO_MODEL(frame)[0]
+        object_count = len(detections.boxes)
+        object_positions = detections.boxes.xywh.tolist()
+        annotated_frame = frame.copy()
+
+        for box in detections.boxes:
+            x, y, w, h = box.xywh[0].tolist()
+            cls_id = int(box.cls[0])
+            label = YOLO_MODEL.model.names[cls_id]
+            cv2.rectangle(annotated_frame, (int(x - w/2), int(y - h/2)), (int(x + w/2), int(y + h/2)), (0, 255, 0), 2)
+            cv2.putText(annotated_frame, label, (int(x - w/2), int(y - h/2) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+        snap_path = f"static/frame_{frame_id}.jpg"
+        cv2.imwrite(snap_path, annotated_frame)
+
+        results.append({
+            "frame": snap_path,
+            "count": object_count,
+            "positions": object_positions
+        })
+
+        total_objects += object_count
+        frame_id += 1
+
+    cap.release()
+    print(f"[INFO] Total objects detected across video: {total_objects}")
+
+    return render_template("video_results.html", results=results, total=total_objects)
 
 if __name__ == '__main__':
     app.run(debug=True)
