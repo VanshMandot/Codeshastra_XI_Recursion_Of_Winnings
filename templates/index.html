@@ -1,52 +1,56 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Environment Change Detector</title>
-    <style>
-        img { max-width: 100%; height: auto; margin: 10px; }
-        .btn-group { margin: 10px 0; }
-        button { margin: 5px; padding: 10px; }
-    </style>
+    <title>Environmental Change Detection</title>
 </head>
 <body>
-    <h1>Environment Change Detection</h1>
+    <h1>Object & Change Tracker</h1>
 
-    <div class="btn-group">
-        <form action="/start_camera" method="post"><button type="submit">Start Baseline Capture</button></form>
-        <form action="/stop_camera" method="post"><button type="submit">Stop Camera</button></form>
-        <form action="/capture_changed" method="post"><button type="submit">Capture Changed Image</button></form>
-        <form action="/train" method="post"><button type="submit">Train Model</button></form>
-        <form action="/predict" method="post"><button type="submit">Predict</button></form>
-        <form action="/compare" method="post"><button type="submit">Compare</button></form>
-    </div>
+    <form action="/start_camera" method="post">
+        <button type="submit">Start Baseline Scan</button>
+    </form>
 
-    <div>
-        <h2>Baseline Images</h2>
-        {% for file in baseline_files %}
-            <img src="/{{ file }}" alt="Baseline Image">
-        {% endfor %}
-    </div>
+    <form action="/stop_camera" method="post">
+        <button type="submit">Stop Camera</button>
+    </form>
 
-    <div>
-        <h2>Changed Image</h2>
-        {% if changed_exists %}
-            <img src="/static/changed.jpg" alt="Changed Image">
-        {% endif %}
-    </div>
+    <form action="/capture_changed" method="post">
+        <button type="submit">Capture Changed Image</button>
+    </form>
 
-    <div>
-        <h2>Match Visualization</h2>
-        <img src="/match_visual" alt="Match Visualization">
-    </div>
+    <form action="/train" method="post">
+        <button type="submit">Train Baseline Model</button>
+    </form>
 
-    <div>
-        <h2>Upload Video for Detection</h2>
-        <form action="/upload_video" method="post" enctype="multipart/form-data">
-            <input type="file" name="video">
-            <button type="submit">Upload</button>
-        </form>
-    </div>
+    <form action="/predict" method="post">
+        <button type="submit">Predict Changes</button>
+    </form>
+
+    <form action="/compare" method="post">
+        <button type="submit">Compare to Baseline</button>
+    </form>
+
+    <h2>Upload Video for Object Tracking</h2>
+    <form action="/upload_video" method="post" enctype="multipart/form-data">
+        <input type="file" name="video" accept="video/*">
+        <button type="submit">Upload</button>
+    </form>
+
+    <h2>Baseline Images</h2>
+    {% for img in baseline_files %}
+        <img src="{{ img }}" width="200" style="margin:5px;">
+    {% endfor %}
+
+    <h2>Changed Image</h2>
+    {% if changed_exists %}
+        <img src="{{ url_for('static', filename='changed.jpg') }}" width="300">
+    {% else %}
+        <p>No changed image captured yet.</p>
+    {% endif %}
+
+    <h2>ORB Matching Visualization</h2>
+    <img src="{{ url_for('match_visual') }}" width="400" alt="ORB Match Visual">
+
 </body>
 </html>

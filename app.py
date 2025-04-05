@@ -208,43 +208,95 @@ def process_video(filename):
     video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     cap = cv2.VideoCapture(video_path)
 
-    results = []
-    total_objects = 0
+    tracker = SimpleObjectTracker()
+    unique_ids = set()
+    frame_count = 0
 
-    frame_id = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
         detections = YOLO_MODEL(frame)[0]
-        object_count = len(detections.boxes)
-        object_positions = detections.boxes.xywh.tolist()
         annotated_frame = frame.copy()
+        object_positions = []
 
         for box in detections.boxes:
-            x, y, w, h = box.xywh[0].tolist()
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
             cls_id = int(box.cls[0])
-            label = YOLO_MODEL.model.names[cls_id]
-            cv2.rectangle(annotated_frame, (int(x - w/2), int(y - h/2)), (int(x + w/2), int(y + h/2)), (0, 255, 0), 2)
-            cv2.putText(annotated_frame, label, (int(x - w/2), int(y - h/2) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            label = YOLO_MODEL.names[cls_id]
+            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            w, h = x2 - x1, y2 - y1
+            object_positions.append([cx, cy, w, h])
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(annotated_frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        snap_path = f"static/frame_{frame_id}.jpg"
-        cv2.imwrite(snap_path, annotated_frame)
+        tracked_objects = tracker.update(object_positions)
+        for obj_id, (x, y, w, h) in tracked_objects.items():
+            unique_ids.add(obj_id)
+            cv2.putText(annotated_frame, f"ID: {obj_id}", (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
-        results.append({
-            "frame": snap_path,
-            "count": object_count,
-            "positions": object_positions
-        })
-
-        total_objects += object_count
-        frame_id += 1
+        out_path = f"static/processed_frame_{frame_count}.jpg"
+        cv2.imwrite(out_path, annotated_frame)
+        frame_count += 1
 
     cap.release()
-    print(f"[INFO] Total objects detected across video: {total_objects}")
+    print(f"[INFO] Total unique objects detected across video: {len(unique_ids)}")
+    return render_template("video_results.html", unique_count=len(unique_ids))
 
-    return render_template("video_results.html", results=results, total=total_objects)
+class SimpleObjectTracker:
+    def __init__(self, iou_threshold=0.3):
+        self.next_id = 0
+        self.tracks = {}
+        self.iou_threshold = iou_threshold
+
+    def update(self, detections):
+        updated_tracks = {}
+        used_ids = set()
+
+        for det in detections:
+            if not isinstance(det, (list, tuple)) or len(det) != 4:
+                continue
+            x, y, w, h = det
+            best_iou = 0
+            best_id = None
+
+            for obj_id, (tx, ty, tw, th) in self.tracks.items():
+                iou = self.compute_iou((x, y, w, h), (tx, ty, tw, th))
+                if iou > best_iou and iou >= self.iou_threshold and obj_id not in used_ids:
+                    best_iou = iou
+                    best_id = obj_id
+
+            if best_id is not None:
+                updated_tracks[best_id] = (x, y, w, h)
+                used_ids.add(best_id)
+            else:
+                updated_tracks[self.next_id] = (x, y, w, h)
+                self.next_id += 1
+
+        self.tracks = updated_tracks
+        return self.tracks
+
+    def compute_iou(self, boxA, boxB):
+        ax, ay, aw, ah = boxA
+        bx, by, bw, bh = boxB
+
+        ax1, ay1 = ax - aw/2, ay - ah/2
+        ax2, ay2 = ax + aw/2, ay + ah/2
+        bx1, by1 = bx - bw/2, by - bh/2
+        bx2, by2 = bx + bw/2, by + bh/2
+
+        xA = max(ax1, bx1)
+        yA = max(ay1, by1)
+        xB = min(ax2, bx2)
+        yB = min(ay2, by2)
+
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (ax2 - ax1) * (ay2 - ay1)
+        boxBArea = (bx2 - bx1) * (by2 - by1)
+        iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
+
+        return iou
 
 if __name__ == '__main__':
     app.run(debug=True)
