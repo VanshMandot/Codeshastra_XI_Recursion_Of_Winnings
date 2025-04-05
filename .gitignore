@@ -1,3 +1,4 @@
 venv/ 
 deploy.prototxt 
 mobilenet_iter_73000.caffemodel 
+static/*.jpg 

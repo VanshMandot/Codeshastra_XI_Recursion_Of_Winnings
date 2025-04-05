@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>Change Detection</h1>
+    <p>Step 1: Click below to capture the baseline image.</p>
+    <form action="/capture_baseline" method="post">
+        <button type="submit">Capture Baseline</button>
+    </form>
+
+    <p>Step 2: After capturing baseline, click below to capture the changed image.</p>
+    <form action="/capture_changed" method="post">
+        <button type="submit">Capture Changed Image</button>
+    </form>
+
+    <p>Live Feed (shows changes after both images are captured):</p>
+    <img src="{{ url_for('video_feed') }}" alt="Live Feed" style="max-width: 100%;">
+    <p>First image is the baseline. After capturing the changed image, changes will be highlighted.</p>
+</body>
+</html>
