@@ -54,28 +54,32 @@ def draw_separate_difference_boxes(img1, img2):
     thresh = cv2.dilate(thresh, None, iterations=2)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    change_points = []  # List to store (x, y) coordinates of changes
+
     for idx, contour in enumerate(contours):
         area = cv2.contourArea(contour)
         if area > 800:
             x, y, w, h = cv2.boundingRect(contour)
             cx, cy = x + w // 2, y + h // 2
             label = f"Object {idx+1}"
+            change_points.append((cx, cy))  # Store centroid coordinates
             cv2.circle(img1, (cx, cy), 3, (255, 255, 255), -1)
             cv2.circle(img2, (cx, cy), 3, (255, 255, 255), -1)
             cv2.rectangle(img1, (x, y), (x + w, y + h), (0, 255, 255), 2)
             cv2.rectangle(img2, (x, y), (x + w, y + h), (255, 0, 255), 2)
             cv2.putText(img1, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
             cv2.putText(img2, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-    return img1, img2
+    
+    return img1, img2, change_points
 
 def find_closest_match(reference_folder, test_image_path):
     ref_images, ref_filenames = load_images_from_folder(reference_folder)
     if not ref_images:
-        return None, None
+        return None, None, None
 
     test_img = cv2.imread(test_image_path)
     if test_img is None:
-        return None, None
+        return None, None, None
 
     target_size = (500, 500)
     ref_images = resize_images(ref_images, target_size)
@@ -90,17 +94,17 @@ def find_closest_match(reference_folder, test_image_path):
             best_match_idx = i
 
     if best_match_idx == -1:
-        return None, None
+        return None, None, None
 
     best_match = ref_images[best_match_idx]
-    test_img_boxed, best_match_boxed = draw_separate_difference_boxes(test_img.copy(), best_match.copy())
+    test_img_boxed, best_match_boxed, change_points = draw_separate_difference_boxes(test_img.copy(), best_match.copy())
 
     test_img_save_path = os.path.join(app.config['RESULT_FOLDER'], 'test_result.jpg')
     match_img_save_path = os.path.join(app.config['RESULT_FOLDER'], 'match_result.jpg')
     cv2.imwrite(test_img_save_path, test_img_boxed)
     cv2.imwrite(match_img_save_path, best_match_boxed)
 
-    return test_img_save_path, match_img_save_path
+    return test_img_save_path, match_img_save_path, change_points
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -142,10 +146,12 @@ def house(house_name):
         if file:
             test_image_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(test_image_path)
-            test_result, match_result = find_closest_match(reference_folder, test_image_path)
+            test_result, match_result, change_points = find_closest_match(reference_folder, test_image_path)
             if test_result and match_result:
-                return render_template('result.html', test_img=url_for('static', filename='results/test_result.jpg'),
-                                       match_img=url_for('static', filename='results/match_result.jpg'))
+                return render_template('result.html', 
+                                       test_img=url_for('static', filename='results/test_result.jpg'),
+                                       match_img=url_for('static', filename='results/match_result.jpg'),
+                                       change_points=change_points)
             else:
                 flash('Processing failed')
                 return redirect(request.url)
