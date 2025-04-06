@@ -1,302 +1,155 @@
-# app.py
 import cv2
 import numpy as np
-import threading
-import time
+from skimage.metrics import structural_similarity as ssim
 import os
-import joblib
-import uuid
-from flask import Flask, render_template, Response, request, redirect, url_for, send_file
-from sklearn.neighbors import KNeighborsClassifier
-from ultralytics import YOLO
-from werkzeug.utils import secure_filename
+import zipfile
+from flask import Flask, render_template, request, redirect, url_for, flash
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.secret_key = "supersecretkey"
+UPLOAD_FOLDER = 'static/uploads'
+RESULT_FOLDER = 'static/results'
+HOUSES_FOLDER = 'static/houses'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['RESULT_FOLDER'] = RESULT_FOLDER
+app.config['HOUSES_FOLDER'] = HOUSES_FOLDER
 
-# Global Variables
-camera = None
-baseline = None
-changed = None
-stage = "idle"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(RESULT_FOLDER, exist_ok=True)
+os.makedirs(HOUSES_FOLDER, exist_ok=True)
 
-# Auto capture vars
-baseline_images = []
-capture_thread = None
-stop_baseline_capture = False
+def load_images_from_folder(folder):
+    images = []
+    filenames = []
+    for filename in os.listdir(folder):
+        file_path = os.path.join(folder, filename)
+        ext = os.path.splitext(filename)[-1].lower()
+        if ext in ['.jpg', '.jpeg', '.png']:
+            img = cv2.imread(file_path)
+            if img is not None:
+                images.append(img)
+                filenames.append(filename)
+    return images, filenames
 
-# ML model path
-MODEL_PATH = "static/knn_model.pkl"
-YOLO_MODEL = YOLO("yolov8n.pt")
+def resize_images(images, target_size=(500, 500)):
+    resized_images = []
+    for img in images:
+        resized = cv2.resize(img, target_size, interpolation=cv2.INTER_AREA)
+        resized_images.append(resized)
+    return resized_images
 
-# Camera handling
+def compute_similarity(img1, img2):
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    score, _ = ssim(gray1, gray2, full=True)
+    return score
 
-def find_working_camera():
-    for i in range(5):
-        temp_cam = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-        if temp_cam.isOpened():
-            return temp_cam
-    return None
+def draw_separate_difference_boxes(img1, img2):
+    img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    diff = cv2.absdiff(gray1, gray2)
+    diff = cv2.GaussianBlur(diff, (5, 5), 0)
+    _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+    thresh = cv2.dilate(thresh, None, iterations=2)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-def start_camera():
-    global camera
-    if camera is None:
-        camera = find_working_camera()
+    for idx, contour in enumerate(contours):
+        area = cv2.contourArea(contour)
+        if area > 800:
+            x, y, w, h = cv2.boundingRect(contour)
+            cx, cy = x + w // 2, y + h // 2
+            label = f"Object {idx+1}"
+            cv2.circle(img1, (cx, cy), 3, (255, 255, 255), -1)
+            cv2.circle(img2, (cx, cy), 3, (255, 255, 255), -1)
+            cv2.rectangle(img1, (x, y), (x + w, y + h), (0, 255, 255), 2)
+            cv2.rectangle(img2, (x, y), (x + w, y + h), (255, 0, 255), 2)
+            cv2.putText(img1, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            cv2.putText(img2, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+    return img1, img2
 
-def stop_camera():
-    global camera
-    if camera is not None:
-        camera.release()
-        camera = None
+def find_closest_match(reference_folder, test_image_path):
+    ref_images, ref_filenames = load_images_from_folder(reference_folder)
+    if not ref_images:
+        return None, None
 
-def get_frame():
-    global camera
-    if camera is None:
-        return None
-    ret, frame = camera.read()
-    return frame if ret else None
+    test_img = cv2.imread(test_image_path)
+    if test_img is None:
+        return None, None
 
-def preprocess_image(image):
-    resized = cv2.resize(image, (640, 480))
-    gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-    return resized, gray
+    target_size = (500, 500)
+    ref_images = resize_images(ref_images, target_size)
+    test_img = cv2.resize(test_img, target_size, interpolation=cv2.INTER_AREA)
 
-@app.route('/')
-def index():
-    baseline_files = [f"static/{img}" for img in os.listdir('static') if img.startswith('baseline_')]
-    changed_exists = os.path.exists("static/changed.jpg")
-    return render_template('index.html', baseline_files=baseline_files, changed_exists=changed_exists)
-
-@app.route('/start_camera', methods=['POST'])
-def start_cam():
-    global stage, capture_thread, stop_baseline_capture, baseline_images
-    start_camera()
-    baseline_images = []
-    stop_baseline_capture = False
-    stage = "baseline"
-    capture_thread = threading.Thread(target=capture_baseline_loop)
-    capture_thread.start()
-    return redirect(url_for('index'))
-
-@app.route('/stop_camera', methods=['POST'])
-def stop_cam():
-    global stop_baseline_capture, capture_thread
-    stop_baseline_capture = True
-    if capture_thread is not None:
-        capture_thread.join()
-    stop_camera()
-    return redirect(url_for('index'))
-
-def capture_baseline_loop():
-    global baseline_images, stop_baseline_capture
-    count = 0
-    while not stop_baseline_capture:
-        frame = get_frame()
-        if frame is not None:
-            filename = f"static/baseline_{count}.jpg"
-            cv2.imwrite(filename, frame)
-            baseline_images.append(filename)
-            print(f"[INFO] Saved: {filename}")
-            count += 1
-        time.sleep(3)
-
-@app.route('/capture_changed', methods=['POST'])
-def capture_changed():
-    global changed, stage
-    start_camera()
-    frame = get_frame()
-    if frame is not None:
-        resized, gray = preprocess_image(frame)
-        cv2.imwrite("static/changed.jpg", resized)
-        changed = gray
-        stage = "free"
-    stop_camera()
-    return redirect(url_for('index'))
-
-@app.route('/train', methods=['POST'])
-def train_model():
-    features = []
-    labels = []
-    orb = cv2.ORB_create()
-
-    for path in baseline_images:
-        img = cv2.imread(path)
-        _, gray = preprocess_image(img)
-        kp, des = orb.detectAndCompute(gray, None)
-        if des is not None:
-            features.append(des.flatten())
-            labels.append("baseline")
-
-    if features:
-        knn = KNeighborsClassifier(n_neighbors=3)
-        knn.fit(features, labels)
-        joblib.dump(knn, MODEL_PATH)
-        print("[INFO] Model trained and saved.")
-
-    return redirect(url_for('index'))
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    global changed
-    if changed is None or not os.path.exists(MODEL_PATH):
-        print("[ERROR] Model or changed image missing.")
-        return redirect(url_for('index'))
-
-    knn = joblib.load(MODEL_PATH)
-    orb = cv2.ORB_create()
-    kp, des = orb.detectAndCompute(changed, None)
-
-    if des is not None:
-        flat = des.flatten().reshape(1, -1)
-        prediction = knn.predict(flat)
-        print(f"[RESULT] Prediction: {prediction[0]}")
-    else:
-        print("[WARN] Could not compute features for changed image.")
-
-    return redirect(url_for('index'))
-
-@app.route('/compare', methods=['POST'])
-def compare():
-    global stage, baseline_images, changed
-    if changed is None or not baseline_images:
-        print("[ERROR] No data to compare.")
-        return redirect(url_for('index'))
-
-    orb = cv2.ORB_create()
-    kp2, des2 = orb.detectAndCompute(changed, None)
-    best_score = 0
-    best_match_image = None
-    match_visual_path = "static/match_visual.jpg"
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-
-    for path in baseline_images:
-        base = cv2.imread(path)
-        resized, gray = preprocess_image(base)
-        kp1, des1 = orb.detectAndCompute(gray, None)
-        if des1 is None or des2 is None:
-            continue
-        matches = bf.match(des1, des2)
-        matches = sorted(matches, key=lambda x: x.distance)
-        score = len(matches)
+    best_score = -1
+    best_match_idx = -1
+    for i, ref_img in enumerate(ref_images):
+        score = compute_similarity(test_img, ref_img)
         if score > best_score:
             best_score = score
-            best_match_image = path
-            img_matches = cv2.drawMatches(gray, kp1, changed, kp2, matches[:20], None, flags=2)
-            cv2.imwrite(match_visual_path, img_matches)
+            best_match_idx = i
 
-    print(f"[INFO] Best match found: {best_match_image} with {best_score} matches")
-    stage = "free"
-    return redirect(url_for('index'))
+    if best_match_idx == -1:
+        return None, None
 
-@app.route('/match_visual')
-def match_visual():
-    return send_file("static/match_visual.jpg", mimetype='image/jpeg')
+    best_match = ref_images[best_match_idx]
+    test_img_boxed, best_match_boxed = draw_separate_difference_boxes(test_img.copy(), best_match.copy())
 
-@app.route('/upload_video', methods=['POST'])
-def upload_video():
-    if 'video' not in request.files:
-        return "No video file uploaded", 400
-    file = request.files['video']
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-    return redirect(url_for('process_video', filename=filename))
+    test_img_save_path = os.path.join(app.config['RESULT_FOLDER'], 'test_result.jpg')
+    match_img_save_path = os.path.join(app.config['RESULT_FOLDER'], 'match_result.jpg')
+    cv2.imwrite(test_img_save_path, test_img_boxed)
+    cv2.imwrite(match_img_save_path, best_match_boxed)
 
-@app.route('/process_video/<filename>')
-def process_video(filename):
-    video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    cap = cv2.VideoCapture(video_path)
+    return test_img_save_path, match_img_save_path
 
-    tracker = SimpleObjectTracker()
-    unique_ids = set()
-    frame_count = 0
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    houses = [d for d in os.listdir(app.config['HOUSES_FOLDER']) if os.path.isdir(os.path.join(app.config['HOUSES_FOLDER'], d))]
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    if request.method == 'POST' and 'folder' in request.files:
+        file = request.files['folder']
+        if file.filename == '':
+            flash('No selected file')
+        elif file and file.filename.endswith('.zip'):
+            zip_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(zip_path)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                house_name = zip_ref.namelist()[0].split('/')[0]
+                extract_path = os.path.join(app.config['HOUSES_FOLDER'], house_name)
+                zip_ref.extractall(app.config['HOUSES_FOLDER'])
+            os.remove(zip_path)
+            flash(f'House "{house_name}" uploaded successfully!')
+            return redirect(url_for('index'))
+        else:
+            flash('Please upload a ZIP file')
 
-        detections = YOLO_MODEL(frame)[0]
-        annotated_frame = frame.copy()
-        object_positions = []
+    return render_template('index.html', houses=houses)
 
-        for box in detections.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            cls_id = int(box.cls[0])
-            label = YOLO_MODEL.names[cls_id]
-            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-            w, h = x2 - x1, y2 - y1
-            object_positions.append([cx, cy, w, h])
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(annotated_frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+@app.route('/house/<house_name>', methods=['GET', 'POST'])
+def house(house_name):
+    reference_folder = os.path.join(app.config['HOUSES_FOLDER'], house_name)
+    images, filenames = load_images_from_folder(reference_folder)
+    image_paths = [f"houses/{house_name}/{fname}" for fname in filenames]
 
-        tracked_objects = tracker.update(object_positions)
-        for obj_id, (x, y, w, h) in tracked_objects.items():
-            unique_ids.add(obj_id)
-            cv2.putText(annotated_frame, f"ID: {obj_id}", (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-
-        out_path = f"static/processed_frame_{frame_count}.jpg"
-        cv2.imwrite(out_path, annotated_frame)
-        frame_count += 1
-
-    cap.release()
-    print(f"[INFO] Total unique objects detected across video: {len(unique_ids)}")
-    return render_template("video_results.html", unique_count=len(unique_ids))
-
-class SimpleObjectTracker:
-    def __init__(self, iou_threshold=0.3):
-        self.next_id = 0
-        self.tracks = {}
-        self.iou_threshold = iou_threshold
-
-    def update(self, detections):
-        updated_tracks = {}
-        used_ids = set()
-
-        for det in detections:
-            if not isinstance(det, (list, tuple)) or len(det) != 4:
-                continue
-            x, y, w, h = det
-            best_iou = 0
-            best_id = None
-
-            for obj_id, (tx, ty, tw, th) in self.tracks.items():
-                iou = self.compute_iou((x, y, w, h), (tx, ty, tw, th))
-                if iou > best_iou and iou >= self.iou_threshold and obj_id not in used_ids:
-                    best_iou = iou
-                    best_id = obj_id
-
-            if best_id is not None:
-                updated_tracks[best_id] = (x, y, w, h)
-                used_ids.add(best_id)
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            flash('No selected file')
+            return redirect(request.url)
+        if file:
+            test_image_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(test_image_path)
+            test_result, match_result = find_closest_match(reference_folder, test_image_path)
+            if test_result and match_result:
+                return render_template('result.html', test_img=url_for('static', filename='results/test_result.jpg'),
+                                       match_img=url_for('static', filename='results/match_result.jpg'))
             else:
-                updated_tracks[self.next_id] = (x, y, w, h)
-                self.next_id += 1
-
-        self.tracks = updated_tracks
-        return self.tracks
-
-    def compute_iou(self, boxA, boxB):
-        ax, ay, aw, ah = boxA
-        bx, by, bw, bh = boxB
-
-        ax1, ay1 = ax - aw/2, ay - ah/2
-        ax2, ay2 = ax + aw/2, ay + ah/2
-        bx1, by1 = bx - bw/2, by - bh/2
-        bx2, by2 = bx + bw/2, by + bh/2
-
-        xA = max(ax1, bx1)
-        yA = max(ay1, by1)
-        xB = min(ax2, bx2)
-        yB = min(ay2, by2)
-
-        interArea = max(0, xB - xA) * max(0, yB - yA)
-        boxAArea = (ax2 - ax1) * (ay2 - ay1)
-        boxBArea = (bx2 - bx1) * (by2 - by1)
-        iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
-
-        return iou
+                flash('Processing failed')
+                return redirect(request.url)
+    return render_template('house.html', house_name=house_name, image_paths=image_paths)
 
 if __name__ == '__main__':
     app.run(debug=True)

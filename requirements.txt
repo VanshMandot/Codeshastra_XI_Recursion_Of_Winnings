@@ -1,11 +1,4 @@
 opencv-python
 numpy
-tensorflow
 flask
-opencv-python
-numpy
-tensorflow
-flask
-joblib
-scikit-learn
-ultralytics
+scikit-image

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Comparison Result</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+        .result { display: flex; justify-content: center; gap: 20px; }
+        img { max-width: 45%; height: auto; }
+    </style>
+</head>
+<body>
+    <h1>Comparison Result</h1>
+    <div class="result">
+        <div>
+            <h3>Test Image</h3>
+            <img src="{{ test_img }}" alt="Test Image Result">
+        </div>
+        <div>
+            <h3>Best Match</h3>
+            <img src="{{ match_img }}" alt="Match Image Result">
+        </div>
+    </div>
+    <a href="{{ url_for('index') }}">Back to Home</a>
+</body>
+</html>

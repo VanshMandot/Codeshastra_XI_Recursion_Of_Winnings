@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ house_name }} Images</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        img { max-width: 100%; height: auto; }
+        .upload { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Images in {{ house_name }}</h1>
+    <div class="grid">
+        {% for path in image_paths %}
+            <img src="{{ url_for('static', filename=path) }}" alt="House Image">
+        {% endfor %}
+    </div>
+    <div class="upload">
+        <h2>Upload Test Image</h2>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*">
+            <input type="submit" value="Upload and Compare">
+        </form>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <p style="color: red;">{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html> 
