@@ -1,200 +1,265 @@
-<!-- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Comparison Result</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analysis Report</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
-        .result { display: flex; justify-content: center; gap: 20px; }
-        img { max-width: 45%; height: auto; }
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+
+        :root {
+            --primary-color: #3b82f6;
+            --secondary-color: #8b5cf6;
+            --background-start: #111827;
+            --background-end: #1e293b;
+            --text-color: #e5e7eb;
+            --card-bg: rgba(30, 41, 59, 0.5);
+            --border-color: rgba(55, 65, 81, 0.6);
+            --error-text: #f87171;
+            --warning-bg: rgba(251, 146, 60, 0.1);
+            --warning-border: #fb923c;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: linear-gradient(135deg, var(--background-start), var(--background-end));
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        header {
+            padding: 1.5rem 0;
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: white;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 0.6rem 1.2rem;
+            background: transparent;
+            color: #9ca3af;
+            text-decoration: none;
+            border-radius: 50px;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        .nav-btn:hover {
+            background-color: var(--border-color);
+            color: white;
+        }
+        
+        .nav-btn.primary {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+        
+        .nav-btn.primary:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        /* Main Content Animation */
+        .animated-section {
+            animation: fadeIn 0.8s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Comparison Section */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .image-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(5px);
+        }
+        
+        .image-card h2 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: white;
+        }
+
+        .image-card img {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+        }
+
+        /* Results Section */
+        .results-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2.5rem;
+            margin-top: 2rem;
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-header-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image: linear-gradient(to right, #f59e0b 0%, #ef4444 100%);
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .results-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .results-list li {
+            font-size: 1.1rem;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            background-color: #272f3d;
+            border-left: 4px solid var(--error-text);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--error-text);
+            font-weight: 500;
+        }
+
+        .no-changes {
+            text-align: center;
+            padding: 2rem;
+            background-color: rgba(22, 163, 74, 0.1);
+            border-radius: 12px;
+            border: 1px solid rgba(22, 163, 74, 0.5);
+        }
+        
+        .no-changes p {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #4ade80;
+        }
+
     </style>
 </head>
 <body>
-    <h1>Comparison Result</h1>
-    <div class="result">
-        <div>
-            <h3>Test Image</h3>
-            <img src="{{ test_img }}" alt="Test Image Result">
+
+    <header>
+        <nav class="container">
+            <h1 class="header-title">Analysis Report</h1>
+            <div class="header-actions">
+                <a href="{{ request.referrer or url_for('index') }}" class="nav-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 19l-7-7 7-7"/><path d="M18 12H4"/></svg>
+                    New Analysis
+                </a>
+                <a href="{{ url_for('index') }}" class="nav-btn primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Dashboard Home
+                </a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="comparison-grid">
+            <!-- Test Image Card -->
+            <div class="image-card animated-section" style="animation-delay: 0.2s;">
+                <h2>Current State (Aligned)</h2>
+                <img src="{{ test_img }}" alt="Test Image with Changes Highlighted">
+            </div>
+
+            <!-- Baseline Image Card -->
+            <div class="image-card animated-section" style="animation-delay: 0.3s;">
+                <h2>Baseline Reference</h2>
+                <img src="{{ match_img }}" alt="Baseline Image with Changes Highlighted">
+            </div>
         </div>
-        <div>
-            <h3>Best Match</h3>
-            <img src="{{ match_img }}" alt="Match Image Result">
+
+        <!-- Results Card -->
+        <div class="results-card animated-section" style="animation-delay: 0.4s;">
+            <div class="section-header">
+                <div class="section-header-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                </div>
+                <h2 class="section-title">Detected Changes</h2>
+            </div>
+            
+            {% if change_descriptions %}
+                <ul class="results-list">
+                    {% for change in change_descriptions %}
+                    <li>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        <span><strong>MISSING:</strong> {{ change.replace("'", "") }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="no-changes">
+                    <p>✅ No significant changes detected. The environment matches the baseline.</p>
+                </div>
+            {% endif %}
         </div>
-    </div>
-    <a href="{{ url_for('index') }}">Back to Home</a>
+    </main>
 </body>
 </html>
- -->
- <!DOCTYPE html>
- <html lang="en">
- <head>
-     <meta charset="UTF-8">
-     <title>Comparison Result</title>
-     <style>
-         /* Modern UI Styling */
-         body {
-              font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif;
-              padding: 0;
-              margin: 0;
-             background-color: #f7f9fc;
-             color: #2d3748;
-             line-height: 1.6;
-             text-align: center;
-         }
-           
-         .page-wrapper {
-             max-width: 1100px;
-             margin: 0 auto;
-             padding: 40px 20px;
-         }
-          
-         h1 {
-             font-size: 32px;
-             font-weight: 600;
-             color: #3182ce;
-             margin: 0 0 40px 0;
-         }
-          
-         .result-container {
-             background-color: white;
-             border-radius: 15px;
-             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-             padding: 30px;
-             margin-bottom: 30px;
-         }
-          
-         .subtitle {
-             font-size: 18px;
-             color: #4a5568;
-             margin-bottom: 30px;
-         }
-          
-         .result {
-              display: flex;
-              justify-content: center;
-              gap: 40px;
-              flex-wrap: wrap;
-         }
-          
-         .image-box {
-             flex: 1;
-             min-width: 300px;
-             max-width: 500px;
-         }
-          
-         h3 {
-             font-size: 22px;
-             color: #2c5282;
-             margin-bottom: 20px;
-         }
-          
-         img {
-              max-width: 100%;
-              height: auto;
-              border-radius: 10px;
-             box-shadow: 0 4px 8px rgba(0,0,0,0.12);
-             transition: transform 0.3s ease;
-         }
-          
-         img:hover {
-             transform: scale(1.02);
-             box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-         }
-          
-         a {
-             display: inline-block;
-             margin-top: 30px;
-             padding: 14px 28px;
-             background-color: #3182ce;
-             color: white;
-             text-decoration: none;
-             border-radius: 8px;
-             font-weight: 500;
-             transition: all 0.3s ease;
-             box-shadow: 0 2px 4px rgba(49, 130, 206, 0.3);
-         }
-          
-         a:hover {
-             background-color: #2b6cb0;
-             transform: translateY(-2px);
-             box-shadow: 0 4px 8px rgba(49, 130, 206, 0.4);
-         }
-          
-         .match-info {
-             background-color: #ebf8ff;
-             border-left: 4px solid #3182ce;
-             padding: 15px 20px;
-             margin: 0 auto 30px auto;
-             max-width: 600px;
-             text-align: left;
-             border-radius: 0 8px 8px 0;
-         }
-         
-         .changes {
-             margin-top: 30px;
-             background-color: #f0fff4;
-             border-left: 4px solid #38a169;
-             padding: 15px 20px;
-             margin: 30px auto;
-             max-width: 600px;
-             text-align: left;
-             border-radius: 0 8px 8px 0;
-         }
-         
-         ul {
-             list-style-type: none;
-             padding: 0;
-             display: flex;
-             flex-wrap: wrap;
-             gap: 10px;
-             justify-content: center;
-         }
-         
-         li {
-             background-color: #e6fffa;
-             padding: 6px 12px;
-             border-radius: 6px;
-             font-size: 14px;
-             border: 1px solid #81e6d9;
-         }
-     </style>
- </head>
- <body>
-     <div class="page-wrapper">
-         <h1>Comparison Result</h1>
-         
-         <div class="result-container">
-             <div class="match-info">
-                 The system has analyzed your uploaded test image and found the best matching reference image from the database.
-             </div>
-             
-             <div class="result">
-                 <div class="image-box">
-                     <h3>Test Image</h3>
-                     <img src="{{ test_img }}" alt="Test Image Result">
-                 </div>
-                 
-                 <div class="image-box">
-                     <h3>Best Match</h3>
-                     <img src="{{ match_img }}" alt="Match Image Result">
-                 </div>
-             </div>
-             
-             <div class="changes">
-                 <h3>Points of Change (x, y)</h3>
-                 {% if change_points %}
-                     <ul>
-                         {% for point in change_points %}
-                             <li>{{ point[0] }}, {{ point[1] }}</li>
-                         {% endfor %}
-                     </ul>
-                 {% else %}
-                     <p>No significant changes detected.</p>
-                 {% endif %}
-             </div>
-         </div>
-         
-         <a href="{{ url_for('index') }}">Back to Home</a>
-     </div>
- </body>
- </html>
